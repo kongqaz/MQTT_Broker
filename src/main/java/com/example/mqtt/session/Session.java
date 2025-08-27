@@ -4,6 +4,7 @@ import com.example.mqtt.message.PublishMessage;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class Session {
     private final String clientId;
@@ -11,6 +12,7 @@ public class Session {
     private int keepAlive;
     private Map<Integer, PublishMessage> outboundMessages;
     private Map<Integer, PublishMessage> inboundMessages;
+    private final AtomicInteger packetIdGenerator = new AtomicInteger(1);
 
     public Session(String clientId, boolean cleanSession, int keepAlive) {
         this.clientId = clientId;
@@ -46,5 +48,15 @@ public class Session {
 
     public PublishMessage removeInboundMessage(int packetId) {
         return inboundMessages.remove(packetId);
+    }
+
+    public int generatePacketId() {
+        // Packet ID范围是1-65535，超过后重新从1开始
+        int packetId = packetIdGenerator.getAndIncrement();
+        if (packetId > 65535 || packetId <= 0) {
+            packetIdGenerator.set(1);
+            packetId = 1;
+        }
+        return packetId;
     }
 }

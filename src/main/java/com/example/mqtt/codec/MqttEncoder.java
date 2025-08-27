@@ -28,7 +28,7 @@ public class MqttEncoder extends MessageToMessageEncoder<MqttMessage> {
             case PUBREC:
             case PUBREL:
             case PUBCOMP:
-                encodePacketIdMessage(buffer, msg);
+                encodePacketIdMessage(buffer, (PacketIdMessage)msg);
                 break;
             case SUBSCRIBE:
                 encodeSubscribeMessage(buffer, (SubscribeMessage) msg);
@@ -169,10 +169,9 @@ public class MqttEncoder extends MessageToMessageEncoder<MqttMessage> {
         return length;
     }
 
-    private void encodePacketIdMessage(ByteBuf buffer, MqttMessage msg) {
+    private void encodePacketIdMessage(ByteBuf buffer, PacketIdMessage msg) {
         encodeFixedHeader(buffer, msg, 2);
-        // Packet ID应从具体消息中获取，这里简化处理
-        buffer.writeShort(1);
+        buffer.writeShort(msg.getPacketId());
     }
 
     private void encodeSubscribeMessage(ByteBuf buffer, SubscribeMessage msg) {

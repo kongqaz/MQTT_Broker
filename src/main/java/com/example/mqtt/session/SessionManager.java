@@ -31,4 +31,18 @@ public class SessionManager {
     public int getSessionCount() {
         return sessions.size();
     }
+
+    public void removeSubscription(String topic, String clientId) {
+        // 获取主题的订阅者列表
+        Set<Subscription> subscribers = topicSubscriptions.get(topic);
+        if (subscribers != null) {
+            // 移除指定客户端的订阅
+            subscribers.removeIf(subscription -> subscription.getClientId().equals(clientId));
+
+            // 如果该主题没有订阅者了，可以考虑清理
+            if (subscribers.isEmpty()) {
+                topicSubscriptions.remove(topic);
+            }
+        }
+    }
 }

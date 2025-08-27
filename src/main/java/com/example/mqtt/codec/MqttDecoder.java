@@ -174,9 +174,9 @@ public class MqttDecoder extends ReplayingDecoder<Void> {
         return message;
     }
 
-    private MqttMessage decodePacketIdMessage(MqttMessageType type, ByteBuf buffer) {
-        MqttMessage message = new MqttMessage(type);
-        // Packet ID在消息体中，这里简化处理
+    private PacketIdMessage decodePacketIdMessage(MqttMessageType type, ByteBuf buffer) {
+        PacketIdMessage message = new PacketIdMessage(type);
+        message.setPacketId(buffer.readUnsignedShort());
         return message;
     }
 

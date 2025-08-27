@@ -61,16 +61,16 @@ public class MqttMessageHandler extends SimpleChannelInboundHandler<MqttMessage>
                 handlePublish(ctx, (PublishMessage) msg);
                 break;
             case PUBACK:
-                handlePubAck(ctx, msg);
+                handlePubAck(ctx, (PacketIdMessage)msg);
                 break;
             case PUBREC:
-                handlePubRec(ctx, msg);
+                handlePubRec(ctx, (PacketIdMessage)msg);
                 break;
             case PUBREL:
-                handlePubRel(ctx, msg);
+                handlePubRel(ctx, (PacketIdMessage)msg);
                 break;
             case PUBCOMP:
-                handlePubComp(ctx, msg);
+                handlePubComp(ctx, (PacketIdMessage)msg);
                 break;
             case SUBSCRIBE:
                 handleSubscribe(ctx, (SubscribeMessage) msg);
@@ -148,8 +148,9 @@ public class MqttMessageHandler extends SimpleChannelInboundHandler<MqttMessage>
             case 1: // At least once
                 deliverMessage(msg);
                 // 发送PUBACK
-                MqttMessage pubAck = new MqttMessage(MqttMessageType.PUBACK);
+                PacketIdMessage pubAck = new PacketIdMessage(MqttMessageType.PUBACK);
                 pubAck.setQosLevel(0);
+                pubAck.setPacketId(msg.getPacketId());
                 ctx.writeAndFlush(pubAck);
                 break;
             case 2: // Exactly once
@@ -157,7 +158,7 @@ public class MqttMessageHandler extends SimpleChannelInboundHandler<MqttMessage>
                     session.addInboundMessage(msg.getPacketId(), msg);
                 }
                 // 发送PUBREC
-                MqttMessage pubRec = new MqttMessage(MqttMessageType.PUBREC);
+                PacketIdMessage pubRec = new PacketIdMessage(MqttMessageType.PUBREC);
                 pubRec.setQosLevel(0);
                 pubRec.setPacketId(msg.getPacketId());
                 ctx.writeAndFlush(pubRec);
@@ -165,32 +166,37 @@ public class MqttMessageHandler extends SimpleChannelInboundHandler<MqttMessage>
         }
     }
 
-    private void handlePubAck(ChannelHandlerContext ctx, MqttMessage msg) {
+    private void handlePubAck(ChannelHandlerContext ctx, PacketIdMessage msg) {
         if (session != null) {
             session.removeOutboundMessage(msg.getPacketId());
         }
     }
 
-    private void handlePubRec(ChannelHandlerContext ctx, MqttMessage msg) {
+    private void handlePubRec(ChannelHandlerContext ctx, PacketIdMessage msg) {
         // 发送PUBREL
-        MqttMessage pubRel = new MqttMessage(MqttMessageType.PUBREL);
+        PacketIdMessage pubRel = new PacketIdMessage(MqttMessageType.PUBREL);
         pubRel.setQosLevel(1);
         pubRel.setPacketId(msg.getPacketId());
         ctx.writeAndFlush(pubRel);
     }
 
-    private void handlePubRel(ChannelHandlerContext ctx, MqttMessage msg) {
+    private void handlePubRel(ChannelHandlerContext ctx, PacketIdMessage msg) {
         if (session != null) {
-            session.removeInboundMessage(msg.getPacketId());
+            // 从会话中获取原始消息
+            PublishMessage originalMessage = session.removeInboundMessage(msg.getPacketId());
+            if (originalMessage != null) {
+                // 在QoS 2握手完成后，转发消息给订阅者
+                deliverMessageToSubscribers(originalMessage);
+            }
         }
         // 发送PUBCOMP
-        MqttMessage pubComp = new MqttMessage(MqttMessageType.PUBCOMP);
+        PacketIdMessage pubComp = new PacketIdMessage(MqttMessageType.PUBCOMP);
         pubComp.setQosLevel(0);
         pubComp.setPacketId(msg.getPacketId());
         ctx.writeAndFlush(pubComp);
     }
 
-    private void handlePubComp(ChannelHandlerContext ctx, MqttMessage msg) {
+    private void handlePubComp(ChannelHandlerContext ctx, PacketIdMessage msg) {
         if (session != null) {
             session.removeOutboundMessage(msg.getPacketId());
         }
@@ -215,8 +221,18 @@ public class MqttMessageHandler extends SimpleChannelInboundHandler<MqttMessage>
     }
 
     private void handleUnsubscribe(ChannelHandlerContext ctx, UnsubscribeMessage msg) {
-        // 简化实现
-        MqttMessage unsubAck = new MqttMessage(MqttMessageType.UNSUBACK);
+        if (clientId == null) {
+            ctx.close();
+            return;
+        }
+
+        // 从订阅列表中移除订阅
+        for (String topic : msg.getTopics()) {
+            sessionManager.removeSubscription(topic, clientId);
+        }
+
+        // 发送 UNSUBACK
+        PacketIdMessage unsubAck = new PacketIdMessage(MqttMessageType.UNSUBACK);
         unsubAck.setPacketId(msg.getPacketId());
         ctx.writeAndFlush(unsubAck);
     }
@@ -243,6 +259,57 @@ public class MqttMessageHandler extends SimpleChannelInboundHandler<MqttMessage>
             if (channel != null && channel.isActive()) {
                 channel.writeAndFlush(message);
             }
+        }
+    }
+
+    private void deliverMessageToSubscribers(PublishMessage originalMessage) {
+        Set<Subscription> subscribers = sessionManager.getSubscribers(originalMessage.getTopicName());
+        for (Subscription subscription : subscribers) {
+            Channel channel = clientChannels.get(subscription.getClientId());
+            if (channel != null && channel.isActive()) {
+                // 为每个订阅者创建新的消息实例
+                PublishMessage messageToSend = new PublishMessage();
+                messageToSend.setMessageType(MqttMessageType.PUBLISH);
+                messageToSend.setDup(false);
+                messageToSend.setTopicName(originalMessage.getTopicName());
+                messageToSend.setPayload(originalMessage.getPayload());
+                messageToSend.setRetain(originalMessage.isRetain());
+
+                // 根据订阅QoS设置消息QoS
+                int effectiveQos = Math.min(originalMessage.getQosLevel(), subscription.getQos().value());
+                messageToSend.setQosLevel(effectiveQos);
+
+                // 为每个订阅者分配新的PacketId（如果QoS > 0）
+                if (effectiveQos > 0) {
+                    // 应该从订阅者的会话中获取新的PacketId
+                    int packetId = generatePacketIdForClient(subscription.getClientId());
+                    messageToSend.setPacketId(packetId);
+                    // 记录发送给客户端的outbound消息，用于QoS确认处理
+                    Session clientSession = sessionManager.getSession(subscription.getClientId());
+                    if (clientSession != null) {
+                        clientSession.addOutboundMessage(packetId, messageToSend);
+                    }
+                }
+
+                channel.writeAndFlush(messageToSend);
+            }
+        }
+    }
+
+    private int generatePacketIdForClient(String clientId) {
+        // 获取客户端的会话
+        Session clientSession = sessionManager.getSession(clientId);
+        if (clientSession != null) {
+            // 使用会话中的Packet ID生成器
+            return clientSession.generatePacketId();
+        } else {
+            // 如果没有会话，使用全局生成器
+            int packetId = packetIdGenerator.getAndIncrement();
+            if (packetId > 65535 || packetId <= 0) {
+                packetIdGenerator.compareAndSet(packetId, 1);
+                packetId = 1;
+            }
+            return packetId;
         }
     }
 
