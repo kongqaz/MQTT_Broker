@@ -2,6 +2,7 @@ package com.example.mqtt;
 
 import com.example.mqtt.codec.MqttDecoder;
 import com.example.mqtt.codec.MqttEncoder;
+import com.example.mqtt.config.MqttBrokerProperties;
 import com.example.mqtt.handler.MqttMessageHandler;
 import com.example.mqtt.session.SessionManager;
 import io.netty.bootstrap.ServerBootstrap;
@@ -12,23 +13,31 @@ import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.handler.timeout.IdleStateHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Component;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
+@Component
 public class MqttBrokerServer {
     private static final Logger logger = LoggerFactory.getLogger(MqttBrokerServer.class);
 
-    private final int port;
+    @Value("${mqtt.broker.port:1883}")
+    private int port;
+
     private final SessionManager sessionManager;
     private final Map<String, Channel> clientChannels;
 
     private EventLoopGroup bossGroup;
     private EventLoopGroup workerGroup;
 
-    public MqttBrokerServer(int port) {
-        this.port = port;
+    @Autowired
+    private MqttBrokerProperties mqttBrokerProperties;
+
+    public MqttBrokerServer() {
         this.sessionManager = new SessionManager();
         this.clientChannels = new ConcurrentHashMap<>();
     }
@@ -56,7 +65,7 @@ public class MqttBrokerServer {
 
                             // 添加业务处理器
                             pipeline.addLast("mqttHandler",
-                                    new MqttMessageHandler(sessionManager, clientChannels));
+                                    new MqttMessageHandler(sessionManager, clientChannels, mqttBrokerProperties));
                         }
                     })
                     .option(ChannelOption.SO_BACKLOG, 128)

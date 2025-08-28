@@ -1,0 +1,13 @@
+mqtt:
+  broker:
+    # 是否启用认证
+    authentication:
+      enabled: false
+      # 用户列表
+      users:
+        - username: admin
+          password: admin123
+        - username: user1
+          password: password1
+        - username: test
+          password: test123

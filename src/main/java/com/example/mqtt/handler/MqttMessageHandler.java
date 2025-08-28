@@ -1,5 +1,6 @@
 package com.example.mqtt.handler;
 
+import com.example.mqtt.config.MqttBrokerProperties;
 import com.example.mqtt.message.*;
 import com.example.mqtt.protocol.MqttMessageType;
 import com.example.mqtt.protocol.MqttQoS;
@@ -13,7 +14,9 @@ import io.netty.handler.timeout.IdleState;
 import io.netty.handler.timeout.IdleStateEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -28,9 +31,12 @@ public class MqttMessageHandler extends SimpleChannelInboundHandler<MqttMessage>
     private String clientId;
     private Session session;
 
-    public MqttMessageHandler(SessionManager sessionManager, Map<String, Channel> clientChannels) {
+    private MqttBrokerProperties mqttBrokerProperties;
+
+    public MqttMessageHandler(SessionManager sessionManager, Map<String, Channel> clientChannels, MqttBrokerProperties mqttBrokerPropertie) {
         this.sessionManager = sessionManager;
         this.clientChannels = clientChannels;
+        this.mqttBrokerProperties = mqttBrokerPropertie;
     }
 
     @Override
@@ -112,6 +118,26 @@ public class MqttMessageHandler extends SimpleChannelInboundHandler<MqttMessage>
             }
         }
 
+        // 用户名密码验证
+        if (msg.isHasUsername() && msg.getUsername() != null) {
+            // 进行用户名密码验证
+            boolean authenticated = authenticateUser(msg.getUsername(), msg.getPassword());
+            if (!authenticated) {
+                ConnAckMessage connAck = new ConnAckMessage();
+                connAck.setReturnCode(4); // 用户名或密码错误
+                ctx.writeAndFlush(connAck);
+                ctx.close();
+                return;
+            }
+        } else if (isAuthenticationRequired()) {
+            // 如果服务器要求认证但客户端未提供用户名密码
+            ConnAckMessage connAck = new ConnAckMessage();
+            connAck.setReturnCode(4); // 用户名或密码错误
+            ctx.writeAndFlush(connAck);
+            ctx.close();
+            return;
+        }
+
         // 检查是否已有连接
         Channel existingChannel = clientChannels.put(clientId, ctx.channel());
         if (existingChannel != null && existingChannel.isActive()) {
@@ -140,13 +166,15 @@ public class MqttMessageHandler extends SimpleChannelInboundHandler<MqttMessage>
             return;
         }
 
+        String msgPayload = new String(msg.getPayload(), java.nio.charset.StandardCharsets.UTF_8);
+        logger.info("Recv publish msg from client id={}, topic={}, payload={}", clientId, msg.getTopicName(), msgPayload);
         // 处理QoS
         switch (msg.getQosLevel()) {
             case 0: // At most once
-                deliverMessage(msg);
+                deliverMessageToSubscribers(msg);
                 break;
             case 1: // At least once
-                deliverMessage(msg);
+                deliverMessageToSubscribers(msg);
                 // 发送PUBACK
                 PacketIdMessage pubAck = new PacketIdMessage(MqttMessageType.PUBACK);
                 pubAck.setQosLevel(0);
@@ -329,5 +357,30 @@ public class MqttMessageHandler extends SimpleChannelInboundHandler<MqttMessage>
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
         logger.error("Exception in MQTT handler", cause);
         ctx.close();
+    }
+
+    private boolean authenticateUser(String username, byte[] password) {
+        // 实现具体的认证逻辑
+        // 例如查询数据库、验证LDAP等
+        if (username == null) return false;
+        if (password == null) return false;
+
+        String passwordStr = new String(password, java.nio.charset.StandardCharsets.UTF_8);
+
+        // 遍历配置文件中的用户列表进行验证
+        List<MqttBrokerProperties.Authentication.User> users = mqttBrokerProperties.getAuthentication().getUsers();
+        if (users != null) {
+            for (MqttBrokerProperties.Authentication.User user : users) {
+                if (username.equals(user.getUsername()) && passwordStr.equals(user.getPassword())) {
+                    return true;
+                }
+            }
+        }
+
+        return false; // 示例中暂时返回true
+    }
+
+    private boolean isAuthenticationRequired() {
+        return mqttBrokerProperties.getAuthentication().isEnabled();
     }
 }
