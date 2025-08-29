@@ -17,6 +17,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import javax.annotation.PostConstruct;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
@@ -40,6 +41,12 @@ public class MqttBrokerServer {
     public MqttBrokerServer() {
         this.sessionManager = new SessionManager();
         this.clientChannels = new ConcurrentHashMap<>();
+    }
+
+    // 使用@PostConstruct注解的方法在依赖注入完成后执行
+    @PostConstruct
+    public void init() {
+        logger.info("MQTT Broker port={}", port); // 此时port已被注入
     }
 
     public void start() throws InterruptedException {
