@@ -34,7 +34,7 @@ public class MqttDecoder extends ReplayingDecoder<Void> {
                 message = decodeConnAckMessage(in);
                 break;
             case PUBLISH:
-                message = decodePublishMessage(in, remainingLength);
+                message = decodePublishMessage(in, remainingLength, qosLevel);
                 break;
             case PUBACK:
             case PUBREC:
@@ -148,20 +148,20 @@ public class MqttDecoder extends ReplayingDecoder<Void> {
         return message;
     }
 
-    private PublishMessage decodePublishMessage(ByteBuf buffer, int remainingLength) {
+    private PublishMessage decodePublishMessage(ByteBuf buffer, int remainingLength, int qosLevel) {
         PublishMessage message = new PublishMessage();
 
         // 主题名
         message.setTopicName(decodeString(buffer));
 
         // Packet ID (QoS > 0时存在)
-        if (message.getQosLevel() > 0) {
+        if (qosLevel > 0) {
             message.setPacketId(buffer.readUnsignedShort());
         }
 
         // 负载
         int payloadLength = remainingLength - (message.getTopicName().length() + 2);
-        if (message.getQosLevel() > 0) {
+        if (qosLevel > 0) {
             payloadLength -= 2; // Packet ID长度
         }
 
