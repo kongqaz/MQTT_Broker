@@ -4,6 +4,7 @@
     <property name="LOG_PATH" value="Logs" />
     <property name="LOG_FILE" value="${LOG_PATH}/application.log" />
     <property name="LOG_FILE_ERROR" value="${LOG_PATH}/application_error.log" />
+    <property name="LOG_PATTERN" value="%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36}[%line] %msg%n"/>
 
     <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
         <encoder>
@@ -49,4 +50,23 @@
         <appender-ref ref="FILE_INFO" />
         <appender-ref ref="FILE_ERROR" />
     </root>
+
+    <appender name="DEBUG_MSG" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_PATH}/app_debug_msg.log</file>
+        <encoder>
+            <pattern>${LOG_PATTERN}</pattern>
+        </encoder>
+        <rollingPolicy class="ch.qos.logback.core.rolling.FixedWindowRollingPolicy">
+            <fileNamePattern>${LOG_PATH}/app_debug_msg.%i.log</fileNamePattern>
+            <minIndex>1</minIndex>
+            <maxIndex>5</maxIndex>
+        </rollingPolicy>
+        <triggeringPolicy class="ch.qos.logback.core.rolling.SizeBasedTriggeringPolicy">
+            <maxFileSize>10MB</maxFileSize>
+        </triggeringPolicy>
+    </appender>
+
+    <logger name="logger.DEBUG_MSG" level="INFO" additivity="false">
+        <appender-ref ref="DEBUG_MSG"/>
+    </logger>
 </configuration>

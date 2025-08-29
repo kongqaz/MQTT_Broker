@@ -23,6 +23,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 public class MqttMessageHandler extends SimpleChannelInboundHandler<MqttMessage> {
     private static final Logger logger = LoggerFactory.getLogger(MqttMessageHandler.class);
+    private static final Logger loggerDebug = LoggerFactory.getLogger("logger.DEBUG_MSG");
 
     private final SessionManager sessionManager;
     private final Map<String, Channel> clientChannels;
@@ -167,7 +168,9 @@ public class MqttMessageHandler extends SimpleChannelInboundHandler<MqttMessage>
         }
 
         String msgPayload = new String(msg.getPayload(), java.nio.charset.StandardCharsets.UTF_8);
-        logger.info("Recv publish msg from client id={}, topic={}, payload={}", clientId, msg.getTopicName(), msgPayload);
+//        logger.info("Recv publish msg from client id={}, topic={}, payload={}", clientId, msg.getTopicName(), msgPayload);
+        logger.info("Recv publish msg from client id={}, topic={}", clientId, msg.getTopicName());
+        loggerDebug.info("Recv publish msg from client id={}, topic={}, payload={}", clientId, msg.getTopicName(), msgPayload);
         // 处理QoS
         switch (msg.getQosLevel()) {
             case 0: // At most once
@@ -272,6 +275,7 @@ public class MqttMessageHandler extends SimpleChannelInboundHandler<MqttMessage>
 
     private void handleDisconnect(ChannelHandlerContext ctx) {
         if (clientId != null) {
+            logger.info("Client {} disconnected", clientId);
             clientChannels.remove(clientId);
             if (session != null && session.isCleanSession()) {
                 sessionManager.removeSession(clientId);
