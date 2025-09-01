@@ -185,11 +185,20 @@ public class MqttDecoder extends ReplayingDecoder<Void> {
         message.setPacketId(buffer.readUnsignedShort());
 
         int readBytes = 2; // 已读取packetId的字节数
-        while (readBytes < remainingLength) {
+        while (readBytes < remainingLength && buffer.isReadable()) {
+            // 确保至少还有3个字节可读（2字节长度 + 1字节QoS）
+            if (buffer.readableBytes() < 3) {
+                break;
+            }
+
             String topic = decodeString(buffer);
+            if (buffer.readableBytes() < 1) {
+                break;
+            }
             int qos = buffer.readUnsignedByte();
             message.addTopicSubscription(topic, qos);
-            readBytes += topic.length() + 3; // topic长度(2) + topic + qos(1)
+
+            readBytes += 2 + topic.length() + 1; // topic长度(2) + topic + qos(1)
         }
 
         return message;
