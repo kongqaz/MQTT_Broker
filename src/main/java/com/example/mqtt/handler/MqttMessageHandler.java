@@ -297,6 +297,13 @@ public class MqttMessageHandler extends SimpleChannelInboundHandler<MqttMessage>
 
     private void deliverMessageToSubscribers(PublishMessage originalMessage) {
         Set<Subscription> subscribers = sessionManager.getSubscribers(originalMessage.getTopicName());
+
+        // 添加对 '+' 通配符的支持
+        Set<Subscription> wildcardSubscribers = sessionManager.getWildcardSubscribers(originalMessage.getTopicName(), "+");
+        if (wildcardSubscribers != null && !wildcardSubscribers.isEmpty()) {
+            subscribers.addAll(wildcardSubscribers);
+        }
+
         for (Subscription subscription : subscribers) {
             Channel channel = clientChannels.get(subscription.getClientId());
             if (channel != null && channel.isActive()) {
