@@ -243,6 +243,7 @@ public class MqttMessageHandler extends SimpleChannelInboundHandler<MqttMessage>
         subAck.setPacketId(msg.getPacketId());
 
         for (SubscribeMessage.TopicSubscription topic : msg.getTopics()) {
+            logger.info("Client {} subscribed to topic {}", clientId, topic.getTopic());
             Subscription subscription = new Subscription(clientId, topic.getTopic(), MqttQoS.valueOf(topic.getQos()));
             sessionManager.addSubscription(topic.getTopic(), subscription);
             subAck.addReturnCode(topic.getQos()); // 接受订阅
@@ -324,6 +325,7 @@ public class MqttMessageHandler extends SimpleChannelInboundHandler<MqttMessage>
                 }
 
                 channel.writeAndFlush(messageToSend);
+                logger.info("Sent message to subscriber[{}], topic={}", subscription.getClientId(), subscription.getTopicFilter());
             }
         }
     }
