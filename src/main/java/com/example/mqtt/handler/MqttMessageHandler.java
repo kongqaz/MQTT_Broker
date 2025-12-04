@@ -376,9 +376,14 @@ public class MqttMessageHandler extends SimpleChannelInboundHandler<MqttMessage>
         // 实现具体的认证逻辑
         // 例如查询数据库、验证LDAP等
         if (username == null) return false;
-        if (password == null) return false;
-
-        String passwordStr = new String(password, java.nio.charset.StandardCharsets.UTF_8);
+        String passwordStr;
+        if (password == null) {
+            logger.info("No password provided for user {}", username);
+            passwordStr = "";
+//            return false;
+        } else{
+            passwordStr = new String(password, java.nio.charset.StandardCharsets.UTF_8);
+        }
 
         // 遍历配置文件中的用户列表进行验证
         List<MqttBrokerProperties.Authentication.User> users = mqttBrokerProperties.getAuthentication().getUsers();
